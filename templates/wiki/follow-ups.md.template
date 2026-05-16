@@ -1,0 +1,9 @@
+# Follow-ups
+
+The harness loads any `- [ ]` checkbox items here into every new session as
+"active follow-ups." {{assistant_name}} should nudge {{owner.name}} about
+items that have been here too long, and mark items `[x]` when they resolve.
+
+Format: `- [ ] YYYY-MM-DD | description | source (chat / cron / wiki)`
+
+(empty — populate as commitments accumulate)

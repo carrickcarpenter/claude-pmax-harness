@@ -1,0 +1,25 @@
+# Wiki index for {{owner.name}}
+
+This file lists every page in `personal/wiki/` with a one-line summary.
+{{assistant_name}} reads this on every new session to decide which other
+pages might be relevant to the current message.
+
+## Always-loaded pages (loaded automatically on new session)
+
+- `identity.md` — durable identity context for {{owner.name}}.
+- `principles.md` — working principles and trade-offs.
+
+## On-demand pages
+
+Use this section as you create more wiki pages. Format:
+`path/page.md` — one-line summary of what it covers.
+
+(empty — populate as the wiki grows)
+
+## Strategic context
+
+The harness also loads, on every new session, anything in
+`personal/wiki/follow-ups.md`, `personal/wiki/open-questions.md`, and
+any decision files in `personal/wiki/decisions/` modified in the last
+7 days. Use those for active threads; use this index for durable topic
+pages.

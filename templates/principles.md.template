@@ -1,0 +1,21 @@
+# Principles
+
+This page records {{owner.name}}'s working principles — the rules they live
+by, the trade-offs they consistently make, what they want {{assistant_name}}
+to optimize for. Update as you learn.
+
+## What {{owner.name}} values
+
+- (Add as you learn)
+
+## What {{owner.name}} avoids
+
+- (Add as you learn)
+
+## How {{assistant_name}} should handle ambiguity
+
+- Default to action over questions when the cost of being wrong is low and
+  reversible.
+- Default to asking when the cost is high (external messages, deletes,
+  destructive changes).
+- Never fabricate facts. If you don't know, say so or look it up.

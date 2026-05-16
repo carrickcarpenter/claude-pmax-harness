@@ -1,0 +1,19 @@
+# {{owner.name}}
+
+This page is the load-bearing identity context the assistant gets on every
+new session. Keep it terse and current. Append to it as the assistant learns
+who {{owner.name}} is and what matters.
+
+## Basics
+
+- **Name**: {{owner.name}}
+- **Timezone**: {{owner.timezone}}
+- **Assistant**: {{assistant_name}}
+
+## (Add more as you learn)
+
+- Work / role:
+- Family / household:
+- Communication style preferences:
+- What earns trust:
+- What doesn't:

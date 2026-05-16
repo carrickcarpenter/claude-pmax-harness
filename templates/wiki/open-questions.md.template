@@ -1,0 +1,15 @@
+# Open questions
+
+Threads {{assistant_name}} is helping {{owner.name}} think through but
+haven't resolved yet. When a question gets answered, move it to a dated
+decision page in `decisions/`.
+
+The harness loads everything in this file (up to the "Resolved" section)
+into every new session as strategic context.
+
+(empty — populate as threads emerge)
+
+## Resolved
+
+Anything below this line is closed and reference-only. The harness ignores
+this section in the strategic-context block.

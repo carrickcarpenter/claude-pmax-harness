@@ -12,6 +12,7 @@ import {
 } from "./commands/cron.js";
 import { runPiiCheck } from "./commands/pii-check.js";
 import { runMemoryStats, runMemoryPurge } from "./commands/memory.js";
+import { runSetup } from "./commands/setup.js";
 import { HarnessError, EXIT_CODES } from "../lib/errors.js";
 
 // projectRoot defaults to cwd. Future setup wizard will allow overriding via env.
@@ -32,6 +33,53 @@ program
   .action(() => {
     runVersion();
   });
+
+program
+  .command("setup")
+  .description("first-run interactive wizard — collects identity, Telegram, PII prefs; renders templates/")
+  .option("--non-interactive", "fail rather than prompt; combine with preset flags below for scripted/CI setup")
+  .option("--force", "overwrite existing personal/ files (each gets a .bak sidecar)")
+  .option("--chat-id <id>", "skip the chat_id prompt (e.g. when not on Telegram during setup)")
+  .option("--owner-name <name>", "preset: owner display name")
+  .option("--timezone <tz>", "preset: IANA timezone (e.g. America/New_York)")
+  .option("--assistant-name <name>", "preset: what the assistant calls itself")
+  .option("--telegram-token <token>", "preset: Telegram bot token")
+  .option("--google", "preset: enable Google adapter opt-in (default no)")
+  .option("--precommit-hook", "preset: install PII pre-commit hook (default no)")
+  .option("--no-allow-dangerous", "preset: drop Bash/Write/Edit from chat tools (default allowed)")
+  .action(
+    async (options: {
+      nonInteractive?: boolean;
+      force?: boolean;
+      chatId?: string;
+      ownerName?: string;
+      timezone?: string;
+      assistantName?: string;
+      telegramToken?: string;
+      google?: boolean;
+      precommitHook?: boolean;
+      allowDangerous?: boolean;
+    }) => {
+      try {
+        const exitCode = await runSetup({
+          projectRoot,
+          nonInteractive: options.nonInteractive,
+          force: options.force,
+          chatId: options.chatId,
+          ownerName: options.ownerName,
+          timezone: options.timezone,
+          assistantName: options.assistantName,
+          telegramToken: options.telegramToken,
+          googleEnabled: options.google,
+          precommitHook: options.precommitHook,
+          allowDangerous: options.allowDangerous,
+        });
+        process.exit(exitCode);
+      } catch (err) {
+        handleError(err);
+      }
+    },
+  );
 
 program
   .command("doctor")
