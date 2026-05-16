@@ -79,10 +79,9 @@ claude-pmax-harness/
 │   ├── config/                      # load .env + runtime config; validate; defaults
 │   ├── pii/                         # scanners shared by pii-check + pre-commit
 │   └── lib/                         # logging, errors, fs helpers, ids
-├── vendor/
-│   └── mempalace/                   # vendored MemPalace Python source, pinned version
-│       ├── VERSION                  # SHA/tag the harness was built against
-│       └── ...                      # MemPalace's own files, untouched
+├── requirements/
+│   └── mempalace.txt                # pinned MemPalace version (e.g. mempalace==3.0.0)
+│                                    # installed into venv by scripts/install-mempalace.sh
 ├── templates/                       # source-of-truth templates for personal/
 │   ├── CLAUDE.md.template
 │   ├── identity.md.template
@@ -98,7 +97,7 @@ claude-pmax-harness/
 │   └── systemd/
 │       └── claude-pmax-harness.service
 ├── scripts/
-│   ├── install-mempalace.sh         # called by `harness setup`; sets up vendored copy
+│   ├── install-mempalace.sh         # called by `harness setup`; creates venv + pip installs pinned MemPalace
 │   └── pre-commit-pii-check.sh      # opt-in hook
 └── test/
     ├── unit/
@@ -129,7 +128,7 @@ personal/                            # user-owned overlay (PLAN.md #1)
 
 - **Framework code reads user content from `personal/` and nowhere else.** Anything in `src/` that hardcodes an identity-shaped string is a defect (`harness-skeptic` will catch it).
 - **`personal/` is gitignored at the framework repo.** If a user wants to back it up, see `docs/backup-patterns.md` — two patterns documented, neither baked in.
-- **`vendor/mempalace/` is committed.** It's the harness's responsibility to ship a known-good MemPalace. Upgrade is a deliberate PR with a version bump.
+- **MemPalace is pinned, not source-vendored.** `requirements/mempalace.txt` pins a specific PyPI version we've tested against (e.g. `mempalace==3.0.0`). `scripts/install-mempalace.sh` creates `~/.claude-pmax-harness/venv/` and `pip install -r requirements/mempalace.txt` into it. Upgrade is a PR that bumps the pin. Rationale: MemPalace is an MIT-licensed pip-installable package — source-vendoring would bloat the repo, complicate license compliance, and add maintenance burden without buying us anything.
 - **MemPalace runtime data lives outside the repo** (`~/.claude-pmax-harness/data/`). Avoids "verbatim DB in git" footgun (PLAN.md #2).
 - **`.env` is the only secrets boundary** (PLAN.md #3). Repeated for emphasis.
 - **`templates/cron/` is not `examples/cron/`.** `templates/cron/` is what the setup wizard renders into `personal/cron/` on first install — defaults shipped to every user. `examples/cron/` is reference jobs (morning briefing, weekly reflection) demonstrating patterns; never copied automatically; users browse and adapt. Don't put the same job in both.
@@ -257,16 +256,16 @@ pii:
 
 ## 5. MemPalace bridge protocol
 
-MemPalace is a Python project. The harness vendors a pinned copy in `vendor/mempalace/`. The bridge is the IPC contract between the Node harness and that Python child.
+MemPalace is a pip-installable Python package (https://pypi.org/project/mempalace/), pinned in `requirements/mempalace.txt` and installed by `scripts/install-mempalace.sh` into `~/.claude-pmax-harness/venv/`. The "bridge" is a small Python script the harness ships at `scripts/mempalace-bridge.py` that wraps MemPalace and exposes the protocol below over stdio.
 
 ### Lifecycle
 
-1. Bridge owner (the bot, the cron runner, or both — see decision §9) spawns `python -m mempalace.bridge` with stdout/stdin as the transport (or a UDS, depending on §9 outcome).
-2. Bridge child sends a `ready` handshake message including its protocol version, MemPalace version, and the resolved data dir.
-3. Node side records the version pair; mismatch with `vendor/mempalace/VERSION` exits with a diagnostic.
+1. Bridge owner (the harness's single Node process under §9(a)) spawns the bridge via the venv Python: `~/.claude-pmax-harness/venv/bin/python3 scripts/mempalace-bridge.py` with stdout/stdin as the transport.
+2. Bridge child sends a `ready` handshake line including its `bridge_version`, the running Python version, the resolved `mempalace_version` (or `null` if MemPalace isn't installed), and its `pid`.
+3. Node side records the versions; mismatch against the pin in `requirements/mempalace.txt` surfaces a `harness doctor` warning (does not block — operator may have deliberately upgraded mid-cycle).
 4. Request/response flows over NDJSON. One JSON object per line. Each request has a `request_id`; responses correlate.
-5. On Node process exit, send `{type: "shutdown"}`, then SIGTERM with a 5s grace, then SIGKILL.
-6. If the bridge dies unexpectedly, the supervisor (bot/cron) logs, drops in-flight requests with an error, and restarts the child with exponential backoff (cap 30s). pm2 doesn't manage the child directly — Node does, because pm2 doesn't know the protocol.
+5. On Node process exit, send `{request_id: "x", op: "shutdown"}` (best-effort), then SIGTERM with a 5s grace, then SIGKILL.
+6. If the bridge dies unexpectedly, the Node bridge client logs, rejects all in-flight requests with a structured `ExternalError("bridge died")`, and the next call respawns the child. pm2 doesn't manage the child directly — Node does, because pm2 doesn't know the protocol.
 
 ### Transport
 
@@ -274,8 +273,13 @@ NDJSON over **stdio** by default (simpler, no socket file to manage). If §9 pic
 
 ### Message types (minimum viable set)
 
-Request envelope: `{request_id, type, payload}`.
-Response envelope: `{request_id, ok, result | error}`.
+**Envelope shape (flat, not nested — easier to encode/decode):**
+
+- Request: `{request_id: "<id>", op: "<op-name>", ...op-specific-payload}`
+- Success response: `{request_id: "<id>", ok: true, ...op-specific-fields}`
+- Failure response: `{request_id: "<id>", ok: false, error: "<message>", code: "<CODE>"}`
+
+`request_id` is opaque to the bridge — the Node client generates it and uses it to route the response back to the awaiting caller. `op` names the operation. Per-op payload and per-op success fields are flattened into the same JSON object alongside `request_id` and `op`/`ok` — no nested `payload`/`result` indirection.
 
 | Type | Payload | Result |
 |---|---|---|
@@ -291,9 +295,9 @@ Response envelope: `{request_id, ok, result | error}`.
 
 ### Error handling
 
-- Errors are structured: `{code, message, retriable?}`. Codes: `BAD_REQUEST`, `NOT_READY`, `INTERNAL`, `CORRUPT_STORE`.
-- Node enforces a per-request timeout (default 10s). Timeouts surface as `BRIDGE_TIMEOUT` to callers.
-- Bridge logs to stderr; Node captures and forwards to harness log stream.
+- Errors are structured: `{ok: false, error, code}`. Codes (Python side): `BAD_REQUEST`, `NOT_READY`, `INTERNAL`, `CORRUPT_STORE`, `UNIMPLEMENTED`.
+- Node enforces a per-request timeout (default 15s, configurable). Timeouts surface as an `ExternalError` whose message begins `bridge timeout for op=...`.
+- Bridge logs to stderr; Node captures and forwards to the harness log stream tagged `[mempalace bridge stderr]`.
 
 ### Concurrency
 
@@ -331,7 +335,7 @@ Ports the audit-validated patterns from Alice (PLAN.md "Lessons"). The hard part
 ### Retry
 
 - Max attempts per job per scheduled time (default 2, configurable). Backoff between attempts.
-- Retry only on transient error classes (`BRIDGE_TIMEOUT`, `CLAUDE_CLI_RATE_LIMIT`, `NETWORK`). Logic errors don't retry.
+- Retry only on transient error classes (bridge-timeout, CLI rate-limit, transient network). Logic errors (`BAD_REQUEST`, `UNIMPLEMENTED`) don't retry.
 
 ### Error-response detection
 
@@ -354,7 +358,7 @@ Cron jobs run sequentially by default — one Claude invocation at a time per cr
 1. **Privacy gate** (PLAN.md #13). "This harness will have access to your personal data. Want to read PRIVACY.md before continuing? (y/N)" — default N, but the question itself plants awareness.
 2. **Prereq check.** Runs `harness doctor` internally. Stops if `claude` not on PATH, Python < 3.11, Node < 20, pm2 absent (warns, doesn't fail — pm2 is recommended, not required).
 3. **Owner identity.** Prompts for name, timezone, assistant name. Writes to `personal/config.yaml`. Cheap, fast, builds user confidence before the riskiest step.
-4. **MemPalace install.** Runs `scripts/install-mempalace.sh` — sets up Python venv at `~/.claude-pmax-harness/venv/`, installs from `vendor/mempalace/`, verifies bridge handshake. Idempotent. Most failure-prone step; placing it after identity collection means a user who hits a Python/pip issue has already made visible progress and isn't left with an empty `personal/`.
+4. **MemPalace install.** Runs `scripts/install-mempalace.sh` — creates Python venv at `~/.claude-pmax-harness/venv/`, `pip install -r requirements/mempalace.txt` into it, verifies bridge handshake. Idempotent. Most failure-prone step; placing it after identity collection means a user who hits a Python/pip issue has already made visible progress and isn't left with an empty `personal/`.
 5. **Telegram bot.** Prompts for bot token, sends test message, asks user to reply, captures `chat_id` from the reply, stores both in `.env`. (No other channel; PLAN.md.) Escape hatch: if the user can't reply right now (laptop setup with phone elsewhere, no Telegram client available), the wizard accepts `harness setup --chat-id <id>` to skip the reply-capture and write the supplied ID directly. The next `harness doctor` run validates it works end-to-end.
 6. **Google adapter.** "Enable Google integration (Gmail, Calendar, Drive)? (y/N)" — if yes, run OAuth flow using `google-auth-library`, store refresh token in `.env`, write `google.enabled: true`.
 7. **Template rendering.** For every `templates/**/*.template`, render with Mustache using collected config, write to corresponding `personal/` path. Skip files that already exist unless `--force`.
@@ -593,7 +597,7 @@ This is a **load-bearing** section per [[project-goal]] — see §18.1 for the v
 ### Upgrade path
 
 - The framework repo is what users `git pull` to upgrade. `personal/` is gitignored and never touched.
-- MemPalace version is pinned in `vendor/mempalace/VERSION` and committed. Upgrading MemPalace is a deliberate PR in the framework repo, with migration notes if the bridge protocol or data schema changes.
+- MemPalace version is pinned in `requirements/mempalace.txt` and committed. Upgrading MemPalace is a deliberate PR in the framework repo: bump the pin, re-run bridge protocol tests, update `scripts/mempalace-bridge.py` if the upstream API changed, and document any data-format migration in release notes.
 - Template files in `templates/` may evolve; the setup wizard's `--force` flag re-renders. The framework does *not* auto-edit existing `personal/` files on upgrade — that's the user's call, with Claude Code as their merge tool (PLAN.md "Real customization model").
 - Schema changes to `personal/config.yaml` require a documented migration step in the release notes. Validation at startup catches stale schemas with a clear "your config is from v1.2, current is v1.3, see RELEASES.md" message.
 
@@ -609,7 +613,7 @@ This is a **load-bearing** section per [[project-goal]] — see §18.1 for the v
 
 **Still open:**
 
-1. **MemPalace bridge protocol compatibility.** Does the vendored MemPalace expose an NDJSON-bridge mode, or does the harness ship a thin Python shim in `vendor/mempalace/bridge/`? Alice ships her own bridge at `scripts/mempalace-bridge.py` — the harness probably needs an equivalent. Worth confirming MemPalace's upstream stance before vendoring.
+1. ~~**MemPalace bridge protocol compatibility.**~~ **Resolved 2026-05-16.** MemPalace upstream is a Python library, not a bridge; the harness ships its own thin bridge at `scripts/mempalace-bridge.py`. Approach: pin MemPalace in `requirements/mempalace.txt`, `pip install` into a venv at install-time, wrap with our bridge script. See §5.
 2. **MemPalace concurrent connection semantics.** Moot under §9(a) lock (single Node process = single bridge owner). Re-open if topology ever revisits.
 3. **Wiki-index pre-pass implementation.** Should the index be auto-generated from page frontmatter on every load, or maintained as an explicit `personal/wiki/INDEX.md` the synthesis cron edits? Alice uses always-on core pages (`index.md`, `identity.md`, `principles.md`) loaded into every new session with a 30s cache TTL — see §17.6. Decide: explicit core-pages list (Alice pattern) vs. dynamic per-turn selection.
 4. **Setup wizard re-entry UX.** When re-running `harness setup`, pre-fill all fields / no fields / only previously-set fields? Affects how scary "I'm just changing one thing" feels.
@@ -624,7 +628,7 @@ This is a **load-bearing** section per [[project-goal]] — see §18.1 for the v
 Suggested order (each step assumes the previous lands and tests pass):
 
 1. `harness doctor` + `.env` loading + config schema (no behavior, but everything depends on it).
-2. MemPalace vendored install + bridge handshake + `ping` round-trip. Locks decision §9 implicitly via which process spawns the bridge.
+2. MemPalace pinned install (`requirements/mempalace.txt` + `scripts/install-mempalace.sh`) + Python bridge script (`scripts/mempalace-bridge.py`) + Node bridge client (`src/memory/bridge.ts`) with §17.5 resilience (startup ping, sequential per-connection, per-request timeout, respawn-on-death, 10s readiness ceiling) + `harness doctor` ping integration. Locks decision §9 implicitly via which process spawns the bridge.
 3. Claude CLI wrapper (`src/claude/`) with error-shape detection. Stateless invocation only at first (matches §10 recommendation).
 4. Prompt assembly (`src/prompt/`) with Mustache + wiki-index pre-pass + recent-N MemPalace. Test with a fake bot.
 5. Telegram bot (grammY) with owner-chat-id gating. End-to-end chat works against test wiki + test MemPalace.

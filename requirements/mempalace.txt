@@ -1,0 +1,10 @@
+# MemPalace — verbatim-recall memory store backed by ChromaDB.
+# Pinned to a specific PyPI version the harness has been tested against.
+# Upstream: https://pypi.org/project/mempalace/
+# Source: https://github.com/MemPalace/mempalace
+#
+# Bumping this pin is a deliberate PR: re-run the bridge protocol tests,
+# update `scripts/mempalace-bridge.py` if the MemPalace API changed, and
+# document any data-format migration in the release notes.
+
+mempalace==3.0.0

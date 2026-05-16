@@ -4,6 +4,7 @@ import { resolve } from "node:path";
 import { homedir } from "node:os";
 import { loadConfig, checkEnvFilePermissions } from "../../config/load.js";
 import { ConfigError, EXIT_CODES } from "../../lib/errors.js";
+import { MemPalaceBridge } from "../../memory/bridge.js";
 
 interface CheckResult {
   name: string;
@@ -97,6 +98,12 @@ export async function runDoctor(opts: DoctorOptions): Promise<number> {
     detail: `${dataDir}${existsSync(dataDir) ? " (exists)" : " (will be created at first run)"}`,
   });
 
+  // §17.5 #1 — bridge ping. Two layered checks: bridge script can spawn +
+  // ping (Python + bridge script work), and MemPalace package is installed
+  // (the second is a WARN, not FAIL, because the user might be pre-install).
+  const bridgeChecks = await checkBridge({ projectRoot: opts.projectRoot, dataDir });
+  checks.push(...bridgeChecks);
+
   printReport(checks);
 
   const anyFailed = checks.some((c) => !c.ok);
@@ -163,6 +170,63 @@ function checkClaude(): CheckResult {
         "install Claude CLI (https://docs.claude.com/en/docs/claude-code) and ensure it is on PATH",
     };
   }
+}
+
+async function checkBridge(args: {
+  projectRoot: string;
+  dataDir: string;
+}): Promise<CheckResult[]> {
+  const scriptPath = resolve(args.projectRoot, "scripts", "mempalace-bridge.py");
+  if (!existsSync(scriptPath)) {
+    return [
+      {
+        name: "MemPalace bridge script",
+        ok: false,
+        detail: `not found at ${scriptPath}`,
+        fixHint:
+          "this should ship with the framework — repo install may be incomplete",
+      },
+    ];
+  }
+
+  const bridge = new MemPalaceBridge({
+    scriptPath,
+    dataDir: args.dataDir,
+    readyTimeoutMs: 5000,
+    requestTimeoutMs: 5000,
+  });
+
+  const out: CheckResult[] = [];
+  try {
+    const ready = await bridge.start();
+    out.push({
+      name: "MemPalace bridge ping",
+      ok: true,
+      detail: `bridge ${ready.bridge_version} on ${ready.python}`,
+    });
+    const pong = await bridge.ping();
+    out.push({
+      name: "MemPalace package installed",
+      ok: pong.mempalace_available,
+      detail: pong.mempalace_available
+        ? `mempalace ${pong.mempalace_version ?? "unknown"}`
+        : `not importable from ${bridge.configuredPythonPath} — ${pong.mempalace_error ?? "unknown error"}`,
+      fixHint: pong.mempalace_available
+        ? undefined
+        : `run \`scripts/install-mempalace.sh\` to install into ${args.dataDir}/venv`,
+    });
+  } catch (err) {
+    out.push({
+      name: "MemPalace bridge ping",
+      ok: false,
+      detail: err instanceof Error ? err.message : String(err),
+      fixHint:
+        "ensure python3 is on PATH and scripts/mempalace-bridge.py is intact",
+    });
+  } finally {
+    bridge.close();
+  }
+  return out;
 }
 
 function firstLine(s: string): string {
