@@ -10,6 +10,8 @@ import {
   runCronNext,
   runCronScheduler,
 } from "./commands/cron.js";
+import { runPiiCheck } from "./commands/pii-check.js";
+import { runMemoryStats, runMemoryPurge } from "./commands/memory.js";
 import { HarnessError, EXIT_CODES } from "../lib/errors.js";
 
 // projectRoot defaults to cwd. Future setup wizard will allow overriding via env.
@@ -122,6 +124,71 @@ cron
       handleError(err);
     }
   });
+
+program
+  .command("pii-check")
+  .description("scan personal/ for PII category-shaped strings (reports counts, never values)")
+  .option("--staged", "scan only files staged for commit (used by the pre-commit hook)")
+  .option("--install-hook", "install the opt-in pre-commit hook into .git/hooks/")
+  .option("--uninstall-hook", "remove the pre-commit hook installed by this harness")
+  .action(async (options: { staged?: boolean; installHook?: boolean; uninstallHook?: boolean }) => {
+    try {
+      const exitCode = await runPiiCheck({
+        projectRoot,
+        staged: options.staged,
+        installHook: options.installHook,
+        uninstallHook: options.uninstallHook,
+      });
+      process.exit(exitCode);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+const memory = program
+  .command("memory")
+  .description("MemPalace operations (stats, purge)");
+
+memory
+  .command("stats")
+  .description("show MemPalace store stats (counts, disk usage, date range)")
+  .action(async () => {
+    try {
+      const exitCode = await runMemoryStats({ projectRoot });
+      process.exit(exitCode);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+memory
+  .command("purge")
+  .description("purge MemPalace entries — requires exactly one of --all / --query / --range")
+  .option("--all", "purge ALL data (two-step confirmation)")
+  .option("--query <text>", "purge entries semantically matching this query")
+  .option("--range <range>", "purge entries in date range FROM:TO (YYYY-MM-DD:YYYY-MM-DD)")
+  .option("--yes", "skip confirmation prompts (for scripted use; not recommended)")
+  .action(
+    async (options: {
+      all?: boolean;
+      query?: string;
+      range?: string;
+      yes?: boolean;
+    }) => {
+      try {
+        const exitCode = await runMemoryPurge({
+          projectRoot,
+          all: options.all,
+          query: options.query,
+          range: options.range,
+          yes: options.yes,
+        });
+        process.exit(exitCode);
+      } catch (err) {
+        handleError(err);
+      }
+    },
+  );
 
 program.parseAsync(process.argv).catch(handleError);
 
