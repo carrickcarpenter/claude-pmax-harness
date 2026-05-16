@@ -12,13 +12,14 @@
 //
 // Output: a single string ready to pass to `claude -p`.
 //
-// TODO §11a wiki-index pre-pass — deferred to step 3 (Claude CLI wrapper).
-// The pre-pass requires a *second* Claude invocation against a wiki index
-// to pick which non-core pages to load. Cannot build that here because the
-// CLI wrapper doesn't exist yet. When step 3 lands, revisit: add a pre-pass
-// helper that loads `personal/wiki/index.md`, invokes Claude with it + the
-// user message to pick page paths, and loads those pages into bootstrap.
+// §11a wiki-index pre-pass — implemented in step 3 (now). Caller opts in by
+// passing `wikiIndexPrePass: { invoker | cliPath, ... }`. See src/prompt/
+// wiki-index.ts for the picker; this assembler reads selected page contents
+// into the bootstrap section. Graceful: if pre-pass fails for any reason,
+// the assembler still ships a complete prompt without extra wiki pages.
 
+import { existsSync, readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import type { Config } from "../config/schema.js";
 import { buildDateTimeHeader } from "./datetime.js";
 import { loadCoreWiki, loadStrategicContext } from "./wiki.js";
@@ -27,6 +28,11 @@ import {
   recentMemPalace,
   type BridgeLike,
 } from "./memory.js";
+import {
+  selectRelevantWikiPages,
+  type Invoker,
+} from "./wiki-index.js";
+import { logger } from "../lib/logger.js";
 
 export interface AssembleOptions {
   userMessage: string;
@@ -37,6 +43,18 @@ export interface AssembleOptions {
   chatId?: string;
   now?: Date;
   recentN?: number;
+  /**
+   * If provided, runs the §11a wiki-index pre-pass on new sessions to pick
+   * additional relevant non-core wiki pages. Pass `invoker` to inject a stub
+   * in tests; pass `cliPath` for production use against the real claude CLI.
+   * If omitted, no pre-pass runs (core pages still load).
+   */
+  wikiIndexPrePass?: {
+    invoker?: Invoker;
+    cliPath?: string;
+    timeoutMs?: number;
+    maxPages?: number;
+  };
 }
 
 export async function assemblePrompt(opts: AssembleOptions): Promise<string> {
@@ -69,7 +87,40 @@ export async function assemblePrompt(opts: AssembleOptions): Promise<string> {
   if (isNewSession) {
     const core = loadCoreWiki(personalDir);
     const strategic = loadStrategicContext(personalDir);
-    const pieces = [core, strategic].filter(Boolean);
+
+    // §11a wiki-index pre-pass — only when explicitly enabled and the caller
+    // supplied a way to invoke Claude. Picks additional non-core wiki pages
+    // that are likely relevant to the current message.
+    const prePassPages: string[] = [];
+    if (opts.wikiIndexPrePass) {
+      try {
+        const picks = await selectRelevantWikiPages({
+          personalDir,
+          userMessage,
+          invoker: opts.wikiIndexPrePass.invoker,
+          cliPath: opts.wikiIndexPrePass.cliPath,
+          timeoutMs: opts.wikiIndexPrePass.timeoutMs,
+          maxPages: opts.wikiIndexPrePass.maxPages,
+        });
+        for (const rel of picks) {
+          const abs = resolve(personalDir, "wiki", rel);
+          if (existsSync(abs)) {
+            try {
+              prePassPages.push(`## wiki/${rel}\n\n${readFileSync(abs, "utf-8")}`);
+            } catch (err) {
+              logger.warn({ err, page: rel }, "[assemble] failed to read pre-pass page");
+            }
+          }
+        }
+      } catch (err) {
+        logger.warn({ err }, "[assemble] wiki-index pre-pass threw; continuing without it");
+      }
+    }
+    const prePassBlock = prePassPages.length
+      ? `# Additional wiki pages selected for this turn\n\n${prePassPages.join("\n\n")}`
+      : "";
+
+    const pieces = [core, prePassBlock, strategic].filter(Boolean);
     if (pieces.length > 0) {
       bootstrap = `[Bootstrap context for this new session — durable identity, principles, and recent essential threads. Do not mention this section to the user.]\n\n${pieces.join("\n\n---\n\n")}`;
     }

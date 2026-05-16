@@ -498,7 +498,7 @@ Two sub-decisions: wiki page selection, and MemPalace context selection.
 
 ### RECOMMENDED
 
-- **Wiki: (b) Claude-side selection via wiki index pre-pass.** The wiki is small (it's a personal user wiki, not a corpus), index pre-pass is implementable in days not weeks, doesn't add external dependencies, and uses Claude's own judgment about relevance — the same model that will answer. The 2x invocation cost is real but bounded; for a personal harness measured in tens of turns per day, not hundreds, the math works.
+- **Wiki: (b) Claude-side selection via wiki index pre-pass.** The wiki is small (it's a personal user wiki, not a corpus), index pre-pass is implementable in days not weeks, doesn't add external dependencies, and uses Claude's own judgment about relevance — the same model that will answer. The 2x invocation cost is real but bounded; for a personal harness measured in tens of turns per day, not hundreds, the math works. **Implementation (2026-05-16):** `src/prompt/wiki-index.ts` (`selectRelevantWikiPages`) + `src/prompt/assemble.ts` (wired in when `wikiIndexPrePass` option is supplied to `assemblePrompt` on a new session). Uses Haiku for the pre-pass by default to keep costs minimal. Path picks are validated against an allowlist of actual wiki files — the model cannot inject paths.
 - **MemPalace: hybrid — recent-N as the floor, semantic recall as additive.** Always include the last N (say, 5) turns for conversational continuity, *plus* a small set of semantic matches when the user's message has substantive content. Keeps the "what we were just talking about" base layer cheap and reliable while letting MemPalace earn its keep on questions that reach back.
 
 **What would flip the wiki recommendation.** Pro Max usage limits feeling tight (kills the 2x invocation cost), or the wiki growing past ~50 pages (index pre-pass starts to bloat too). Then move to (c), and accept the embedding-infra debt.
@@ -625,12 +625,12 @@ This is a **load-bearing** section per [[project-goal]] — see §18.1 for the v
 
 ## 16. Notes for implementation sequencing
 
-Suggested order (each step assumes the previous lands and tests pass):
+Suggested order (each step assumes the previous lands and tests pass). Status as of 2026-05-16: steps 1–4 landed.
 
-1. `harness doctor` + `.env` loading + config schema (no behavior, but everything depends on it).
-2. MemPalace pinned install (`requirements/mempalace.txt` + `scripts/install-mempalace.sh`) + Python bridge script (`scripts/mempalace-bridge.py`) + Node bridge client (`src/memory/bridge.ts`) with §17.5 resilience (startup ping, sequential per-connection, per-request timeout, respawn-on-death, 10s readiness ceiling) + `harness doctor` ping integration. Locks decision §9 implicitly via which process spawns the bridge.
-3. Claude CLI wrapper (`src/claude/`) with error-shape detection. Stateless invocation only at first (matches §10 recommendation). Also: implement §11a wiki-index pre-pass in `src/prompt/` here, since it requires the CLI wrapper to exist.
-4. Prompt assembly (`src/prompt/`) — wiki loader (core pages, 30s cache, §17.6 #8), strategic context (§17.6 #9), MemPalace recent-N + smart-search integration (§11b + §17.6 #6/#7), date/time injection (§17.1 #1), bootstrap-only-on-new-session (§17.6 #1). Note: **Mustache template rendering moves to step 8 (setup wizard)** where it's actually consumed — runtime prompt assembly doesn't need it because `personal/wiki/` pages are pre-rendered by the wizard. Note: wiki-index pre-pass (§11a) defers to step 3 since it needs the CLI wrapper.
+1. ✓ **Done (commit `7603b67`).** `harness doctor` + `.env` loading + config schema. Files: `src/cli/`, `src/config/`, `src/lib/`.
+2. ✓ **Done (commit `45ef844`).** MemPalace pinned install + Python bridge + Node bridge client + doctor ping integration. Files: `requirements/mempalace.txt`, `scripts/install-mempalace.sh`, `scripts/mempalace-bridge.py`, `src/memory/bridge.ts`.
+3. ✓ **Done (uncommitted as of writing).** Claude CLI wrapper with §17.2 patterns (streaming, hard-ceiling-only, scoped stale-process cleanup, error-shape detection, no `--system-prompt`, NO_COLOR, explicit allowed-tools, explicit HOME). §11a wiki-index pre-pass implemented in `src/prompt/wiki-index.ts`. Files: `src/claude/{invoke,error-shapes,cleanup}.ts`, `src/prompt/wiki-index.ts`, `test/stub-claude.py`.
+4. ✓ **Done (commit `ac7940c`).** Prompt assembly — wiki loader (core pages, 30s cache, §17.6 #8), strategic context (§17.6 #9), MemPalace recent-N + smart-search (§11b + §17.6 #6/#7), date/time injection (§17.1 #1), bootstrap-only-on-new-session (§17.6 #1). Mustache moved to step 8. Files: `src/prompt/{datetime,wiki,memory,assemble}.ts`. Pre-pass wired in via step 3.
 5. Telegram bot (grammY) with owner-chat-id gating. End-to-end chat works against test wiki + test MemPalace.
 6. Cron runner with dedup, catch-up, journal. Wire up the 2 example jobs.
 7. PII tooling: `pii-check`, `memory purge`, optional pre-commit hook.

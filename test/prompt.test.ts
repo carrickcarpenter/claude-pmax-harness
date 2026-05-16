@@ -21,7 +21,12 @@ import {
   type BridgeLike,
 } from "../src/prompt/memory.js";
 import { assemblePrompt } from "../src/prompt/assemble.js";
+import {
+  selectRelevantWikiPages,
+  _internal,
+} from "../src/prompt/wiki-index.js";
 import { ConfigSchema, type Config } from "../src/config/schema.js";
+import type { InvokeOptions, InvokeResult } from "../src/claude/invoke.js";
 
 function makeConfig(): Config {
   return ConfigSchema.parse({
@@ -374,6 +379,71 @@ describe("assemblePrompt", () => {
     expect(out).not.toContain("identity content here");
   });
 
+  test("on new session with wikiIndexPrePass + invoker, pulls picked page into bootstrap", async () => {
+    mkdirSync(resolve(personalDir, "wiki", "projects"), { recursive: true });
+    writeFileSync(
+      resolve(personalDir, "wiki", "index.md"),
+      "# Wiki Index\n- projects/auth.md: notes on auth migration\n- projects/billing.md: notes on billing rewrite\n",
+    );
+    writeFileSync(
+      resolve(personalDir, "wiki", "projects", "auth.md"),
+      "Auth migration is blocked on legal review.",
+    );
+    writeFileSync(
+      resolve(personalDir, "wiki", "projects", "billing.md"),
+      "Billing rewrite is on hold.",
+    );
+
+    const fakeInvoker = async (_opts: InvokeOptions): Promise<InvokeResult> => ({
+      text: "projects/auth.md",
+      sessionId: "stub",
+      durationMs: 5,
+      flagged: { flagged: false },
+    });
+
+    const out = await assemblePrompt({
+      userMessage: "where are we on the auth migration?",
+      config: makeConfig(),
+      isNewSession: true,
+      bridge: stubBridge,
+      personalDir,
+      wikiIndexPrePass: { invoker: fakeInvoker },
+    });
+    expect(out).toContain("Additional wiki pages selected for this turn");
+    expect(out).toContain("Auth migration is blocked on legal review");
+    expect(out).not.toContain("Billing rewrite is on hold");
+  });
+
+  test("on continuing session, pre-pass is skipped even if option supplied", async () => {
+    mkdirSync(resolve(personalDir, "wiki", "projects"), { recursive: true });
+    writeFileSync(
+      resolve(personalDir, "wiki", "index.md"),
+      "# index\n- projects/x.md\n",
+    );
+    writeFileSync(resolve(personalDir, "wiki", "projects", "x.md"), "X content");
+    let called = false;
+    const fakeInvoker = async (_opts: InvokeOptions): Promise<InvokeResult> => {
+      called = true;
+      return {
+        text: "projects/x.md",
+        sessionId: "stub",
+        durationMs: 0,
+        flagged: { flagged: false },
+      };
+    };
+    const out = await assemblePrompt({
+      userMessage: "follow up",
+      config: makeConfig(),
+      isNewSession: false,
+      bridge: stubBridge,
+      personalDir,
+      wikiIndexPrePass: { invoker: fakeInvoker },
+    });
+    expect(called).toBe(false);
+    expect(out).not.toContain("Additional wiki pages");
+    expect(out).not.toContain("X content");
+  });
+
   test("integrates substantive memories from bridge.recall + recent", async () => {
     const richBridge: BridgeLike = {
       async request(op) {
@@ -406,5 +476,152 @@ describe("assemblePrompt", () => {
     expect(out).toContain("Recent conversation thread");
     expect(out).toContain("supplementary — do not echo");
     expect(out).toContain("auth migration");
+  });
+});
+
+// ── wiki-index pre-pass ──────────────────────────────────────────────────
+
+describe("selectRelevantWikiPages", () => {
+  let personalDir: string;
+
+  beforeEach(() => {
+    personalDir = mkdtempSync(resolve(tmpdir(), "wiki-index-test-"));
+  });
+
+  afterEach(() => {
+    rmSync(personalDir, { recursive: true, force: true });
+  });
+
+  test("returns [] when personal/wiki/ doesn't exist", async () => {
+    const picks = await selectRelevantWikiPages({
+      personalDir,
+      userMessage: "anything",
+    });
+    expect(picks).toEqual([]);
+  });
+
+  test("returns [] when index.md is absent", async () => {
+    mkdirSync(resolve(personalDir, "wiki"));
+    writeFileSync(resolve(personalDir, "wiki", "projects.md"), "x");
+    const picks = await selectRelevantWikiPages({
+      personalDir,
+      userMessage: "anything",
+    });
+    expect(picks).toEqual([]);
+  });
+
+  test("returns [] when no non-core .md files exist", async () => {
+    mkdirSync(resolve(personalDir, "wiki"));
+    writeFileSync(resolve(personalDir, "wiki", "index.md"), "# index");
+    writeFileSync(resolve(personalDir, "wiki", "identity.md"), "identity");
+    const picks = await selectRelevantWikiPages({
+      personalDir,
+      userMessage: "anything",
+    });
+    expect(picks).toEqual([]);
+  });
+
+  test("validates picks against allowlist; drops paths not in the candidate set", async () => {
+    mkdirSync(resolve(personalDir, "wiki", "projects"), { recursive: true });
+    writeFileSync(resolve(personalDir, "wiki", "index.md"), "idx");
+    writeFileSync(resolve(personalDir, "wiki", "projects", "auth.md"), "a");
+    writeFileSync(resolve(personalDir, "wiki", "projects", "billing.md"), "b");
+
+    const invoker = async (): Promise<InvokeResult> => ({
+      text: [
+        "projects/auth.md",
+        "projects/not-a-real-page.md",
+        "../etc/passwd",
+        "projects/billing.md",
+      ].join("\n"),
+      sessionId: "x",
+      durationMs: 0,
+      flagged: { flagged: false },
+    });
+
+    const picks = await selectRelevantWikiPages({
+      personalDir,
+      userMessage: "auth or billing?",
+      invoker,
+    });
+    expect(picks).toContain("projects/auth.md");
+    expect(picks).toContain("projects/billing.md");
+    expect(picks).not.toContain("projects/not-a-real-page.md");
+    expect(picks).not.toContain("../etc/passwd");
+  });
+
+  test("returns [] when invoker throws (graceful)", async () => {
+    mkdirSync(resolve(personalDir, "wiki", "projects"), { recursive: true });
+    writeFileSync(resolve(personalDir, "wiki", "index.md"), "idx");
+    writeFileSync(resolve(personalDir, "wiki", "projects", "x.md"), "x");
+    const invoker = async (): Promise<InvokeResult> => {
+      throw new Error("CLI broke");
+    };
+    const picks = await selectRelevantWikiPages({
+      personalDir,
+      userMessage: "...",
+      invoker,
+    });
+    expect(picks).toEqual([]);
+  });
+
+  test("returns [] when invoker returns flagged response", async () => {
+    mkdirSync(resolve(personalDir, "wiki", "projects"), { recursive: true });
+    writeFileSync(resolve(personalDir, "wiki", "index.md"), "idx");
+    writeFileSync(resolve(personalDir, "wiki", "projects", "x.md"), "x");
+    const invoker = async (): Promise<InvokeResult> => ({
+      text: "projects/x.md",
+      sessionId: "x",
+      durationMs: 0,
+      flagged: {
+        flagged: true,
+        category: "soft-apology",
+        reason: "test",
+      },
+    });
+    const picks = await selectRelevantWikiPages({
+      personalDir,
+      userMessage: "...",
+      invoker,
+    });
+    expect(picks).toEqual([]);
+  });
+
+  test("excludes core pages (index/identity/principles/WIKI/follow-ups/open-questions) from candidates", () => {
+    mkdirSync(resolve(personalDir, "wiki"));
+    for (const f of [
+      "index.md",
+      "identity.md",
+      "principles.md",
+      "WIKI.md",
+      "follow-ups.md",
+      "open-questions.md",
+      "real-page.md",
+    ]) {
+      writeFileSync(resolve(personalDir, "wiki", f), "x");
+    }
+    const candidates = _internal.enumerateWikiPages(
+      resolve(personalDir, "wiki"),
+    );
+    expect(candidates).toEqual(["real-page.md"]);
+  });
+
+  test("parsePicks strips list bullets, quoting, and rejects non-path lines", () => {
+    const out = _internal.parsePicks(
+      [
+        "- projects/auth.md",
+        '* "projects/billing.md"',
+        "`projects/notes.md`",
+        "# this is prose",
+        "not a path at all",
+        "projects/with spaces.md",
+      ].join("\n"),
+    );
+    expect(out).toContain("projects/auth.md");
+    expect(out).toContain("projects/billing.md");
+    expect(out).toContain("projects/notes.md");
+    expect(out).not.toContain("# this is prose");
+    expect(out).not.toContain("not a path at all");
+    expect(out).not.toContain("projects/with spaces.md");
   });
 });
