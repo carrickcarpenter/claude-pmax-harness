@@ -44,6 +44,13 @@ export interface AssembleOptions {
   now?: Date;
   recentN?: number;
   /**
+   * Pre-formatted conversation buffer (per §17.6 #3 — the bot's disk-
+   * persisted recent-exchanges store). Under §10 stateless LOCKED, this is
+   * the primary thread-continuity mechanism. Pass "" or omit on the very
+   * first turn or after /clear.
+   */
+  conversationBuffer?: string;
+  /**
    * If provided, runs the §11a wiki-index pre-pass on new sessions to pick
    * additional relevant non-core wiki pages. Pass `invoker` to inject a stub
    * in tests; pass `cliPath` for production use against the real claude CLI.
@@ -126,7 +133,15 @@ export async function assemblePrompt(opts: AssembleOptions): Promise<string> {
     }
   }
 
-  const contextPieces = [recent, semantic, bootstrap].filter(Boolean);
+  // Order matters: conversation buffer (continuity) > recent (MemPalace) >
+  // semantic (relevance) > bootstrap (identity). Closer-to-user-message
+  // = higher continuity influence.
+  const contextPieces = [
+    opts.conversationBuffer ?? "",
+    recent,
+    semantic,
+    bootstrap,
+  ].filter(Boolean);
   const contextBlock = contextPieces.length
     ? `\n\n---\n${contextPieces.join("\n\n---\n")}`
     : "";

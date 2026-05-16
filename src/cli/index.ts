@@ -2,6 +2,7 @@
 import { Command } from "commander";
 import { runDoctor } from "./commands/doctor.js";
 import { runVersion } from "./commands/version.js";
+import { runBot } from "./commands/bot.js";
 import { HarnessError, EXIT_CODES } from "../lib/errors.js";
 
 // projectRoot defaults to cwd. Future setup wizard will allow overriding via env.
@@ -33,6 +34,20 @@ program
   .action(async (options: { fix?: boolean }) => {
     try {
       const exitCode = await runDoctor({ projectRoot, fix: options.fix });
+      process.exit(exitCode);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+program
+  .command("bot")
+  .description(
+    "run the Telegram bot in foreground (pm2/systemd invokes this)",
+  )
+  .action(async () => {
+    try {
+      const exitCode = await runBot({ projectRoot });
       process.exit(exitCode);
     } catch (err) {
       handleError(err);
