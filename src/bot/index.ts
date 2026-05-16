@@ -9,7 +9,14 @@ import { ConversationBuffer } from "./conversation-buffer.js";
 import { ErrorLog } from "./error-log.js";
 import { BotWatchdog } from "./watchdog.js";
 import { makeAccessGate } from "./access.js";
-import { makeTextHandler } from "./handlers/text.js";
+import {
+  makeTextHandler,
+  processTextTurn,
+  type TextHandlerDeps,
+} from "./handlers/text.js";
+import { makeVoiceHandler } from "./handlers/voice.js";
+import { makePhotoHandler } from "./handlers/photo.js";
+import { makeDocumentHandler } from "./handlers/document.js";
 import { logger } from "../lib/logger.js";
 
 export interface StartBotOptions {
@@ -48,7 +55,7 @@ export async function startBot(opts: StartBotOptions): Promise<StartedBot> {
   registerSlashCommands(bot, buffer, errorLog);
 
   // Main text handler — the orchestrator.
-  const textHandler = makeTextHandler({
+  const textDeps: TextHandlerDeps = {
     config: opts.config,
     bridge: opts.bridge,
     buffer,
@@ -59,8 +66,46 @@ export async function startBot(opts: StartBotOptions): Promise<StartedBot> {
     allowedTools: opts.config.tools.allow_dangerous
       ? ["WebSearch", "WebFetch", "Bash", "Read", "Write", "Edit", "Glob", "Grep"]
       : ["WebSearch", "WebFetch", "Read", "Glob", "Grep"],
-  });
+  };
+  const textHandler = makeTextHandler(textDeps);
   bot.on("message:text", textHandler);
+
+  // §17.10 multi-modal handlers — voice + photo + document all route their
+  // transcripts/image-instructions through the same processTextTurn pipeline.
+  const processAsText = (ctx: unknown, message: string): Promise<void> =>
+    processTextTurn(textDeps, ctx as Parameters<typeof processTextTurn>[1], message);
+
+  bot.on(
+    "message:voice",
+    makeVoiceHandler(
+      {
+        token: opts.token,
+        projectRoot: opts.cwd,
+        processAsText: (ctx, transcript) => processAsText(ctx, transcript),
+      },
+      bot,
+    ),
+  );
+  bot.on(
+    "message:photo",
+    makePhotoHandler(
+      {
+        token: opts.token,
+        processAsText: (ctx, instruction) => processAsText(ctx, instruction),
+      },
+      bot,
+    ),
+  );
+  bot.on(
+    "message:document",
+    makeDocumentHandler(
+      {
+        token: opts.token,
+        processAsText: (ctx, instruction) => processAsText(ctx, instruction),
+      },
+      bot,
+    ),
+  );
 
   // Catch-all error handler for grammY's internal middleware errors.
   bot.catch((err) => {
