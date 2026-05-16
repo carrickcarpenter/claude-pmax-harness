@@ -18,9 +18,11 @@
     "node": ">=20"
   },
   "dependencies": {
+    "@types/mustache": "^4.2.6",
     "commander": "^12.1.0",
     "dotenv": "^16.4.5",
     "js-yaml": "^4.1.0",
+    "mustache": "^4.2.0",
     "pino": "^9.5.0",
     "zod": "^3.23.8"
   },
