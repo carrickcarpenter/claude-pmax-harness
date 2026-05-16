@@ -48,18 +48,18 @@ jobs:
           node-version: "22"
           cache: npm
       - run: npm ci
-      # Scan src/, test/, examples/, templates/, scripts/, docs/ for
-      # maintainer PII leaks before shipping a release. The harness's own
-      # personal/ is gitignored and never enters CI; this guards the
-      # framework code itself.
+      # Scan SHIPPED framework files for maintainer PII leaks. Excludes
+      # test/ (intentional fake fixtures: jane@acme.com, 555-867-5309
+      # etc.) and src/pii/patterns.ts (self-documenting regex examples
+      # in code comments like "123 Main St"). The harness's own
+      # personal/ is gitignored and never enters CI — this guards the
+      # framework code shipped to end users.
       - name: PII guard — framework files
         run: |
           set -e
-          # Use the harness's own scanner via the CLI.
-          # personal/ doesn't exist in CI; point at src/ + adjacent.
-          for d in src test examples templates scripts docs; do
+          for d in src examples templates scripts docs; do
             if [ -d "$d" ]; then
               echo "Scanning $d/..."
-              npx tsx -e "import('./src/pii/scanner.js').then(m => { const r = m.scanForPii({ root: '$d' }); console.log(m.formatReport(r)); if (r.files_with_findings > 0) process.exit(1); })"
+              npx tsx -e "import('./src/pii/scanner.js').then(m => { const r = m.scanForPii({ root: '$d', exclude: ['node_modules/', '.git/', 'dist/', 'build/', 'venv/', '.vscode/', '.idea/', 'coverage/', 'pii/patterns.ts'] }); console.log(m.formatReport(r)); if (r.files_with_findings > 0) process.exit(1); })"
             fi
           done
