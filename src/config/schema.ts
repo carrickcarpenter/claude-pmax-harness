@@ -86,6 +86,12 @@ export const CronSchema = z
       .positive()
       .default(5 * 60 * 1000),
     catchup_window_minutes: z.number().int().positive().default(30),
+    /**
+     * Daily scheduled catch-up sweep time in owner timezone, HH:MM format.
+     * Default 09:15 — runs after the typical morning-job window so any jobs
+     * that should have fired in the morning get re-triggered together.
+     */
+    catchup_time: TimeOfDaySchema.default("09:15"),
     retry: z
       .object({
         max_attempts: z.number().int().min(1).max(10).default(2),

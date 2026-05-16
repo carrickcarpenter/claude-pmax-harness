@@ -20,8 +20,10 @@
   "dependencies": {
     "@types/mustache": "^4.2.6",
     "commander": "^12.1.0",
+    "croner": "^10.0.1",
     "dotenv": "^16.4.5",
     "grammy": "^1.43.0",
+    "gray-matter": "^4.0.3",
     "js-yaml": "^4.1.0",
     "mustache": "^4.2.0",
     "pino": "^9.5.0",
