@@ -3,6 +3,7 @@ import { Command } from "commander";
 import { runDoctor } from "./commands/doctor.js";
 import { runVersion } from "./commands/version.js";
 import { runBot } from "./commands/bot.js";
+import { runStart } from "./commands/start.js";
 import {
   runCronList,
   runCronRun,
@@ -99,9 +100,23 @@ program
   });
 
 program
+  .command("start")
+  .description(
+    "run the full harness in foreground (MemPalace bridge + Telegram bot + cron scheduler). This is what pm2/systemd invokes.",
+  )
+  .action(async () => {
+    try {
+      const exitCode = await runStart({ projectRoot });
+      process.exit(exitCode);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+program
   .command("bot")
   .description(
-    "run the Telegram bot in foreground (pm2/systemd invokes this)",
+    "run ONLY the Telegram bot in foreground (without cron). Most users want `harness start`.",
   )
   .action(async () => {
     try {

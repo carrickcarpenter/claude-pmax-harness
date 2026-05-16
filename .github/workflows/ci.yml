@@ -1,0 +1,65 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: typecheck + test (${{ matrix.os }}, Node ${{ matrix.node }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: ["20", "22"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: Setup Python 3.11+
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install npm dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+  pii-check:
+    name: framework PII guard
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+      - run: npm ci
+      # Scan src/, test/, examples/, templates/, scripts/, docs/ for
+      # maintainer PII leaks before shipping a release. The harness's own
+      # personal/ is gitignored and never enters CI; this guards the
+      # framework code itself.
+      - name: PII guard — framework files
+        run: |
+          set -e
+          # Use the harness's own scanner via the CLI.
+          # personal/ doesn't exist in CI; point at src/ + adjacent.
+          for d in src test examples templates scripts docs; do
+            if [ -d "$d" ]; then
+              echo "Scanning $d/..."
+              npx tsx -e "import('./src/pii/scanner.js').then(m => { const r = m.scanForPii({ root: '$d' }); console.log(m.formatReport(r)); if (r.files_with_findings > 0) process.exit(1); })"
+            fi
+          done

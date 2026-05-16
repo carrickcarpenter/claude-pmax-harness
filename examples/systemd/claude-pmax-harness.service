@@ -1,0 +1,35 @@
+; Example systemd user unit for claude-pmax-harness — install as a
+; power-user alternative to pm2. Documented in docs/architecture.md §8.
+;
+; Install:
+;   mkdir -p ~/.config/systemd/user/
+;   cp examples/systemd/claude-pmax-harness.service ~/.config/systemd/user/
+;   # Edit ExecStart + WorkingDirectory below to match your install
+;   systemctl --user daemon-reload
+;   systemctl --user enable --now claude-pmax-harness.service
+;
+; For auto-start on machine boot (without active user session), also run:
+;   loginctl enable-linger $USER
+
+[Unit]
+Description=claude-pmax-harness — Pro Max harness for chat + scheduled jobs + memory
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/claude-pmax-harness
+; Adjust the path below to your harness install. `start` runs the
+; MemPalace bridge + Telegram bot + cron scheduler in one process.
+ExecStart=/usr/bin/env npx tsx src/cli/index.ts start
+Restart=on-failure
+RestartSec=10s
+
+; Give the MemPalace bridge time to flush before SIGKILL.
+TimeoutStopSec=15s
+
+StandardOutput=append:%h/.claude-pmax-harness/logs/harness.out.log
+StandardError=append:%h/.claude-pmax-harness/logs/harness.err.log
+Environment=NODE_ENV=production
+
+[Install]
+WantedBy=default.target
