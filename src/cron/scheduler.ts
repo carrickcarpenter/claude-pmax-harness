@@ -36,6 +36,13 @@ export interface SchedulerOptions {
   exit?: (code: number) => void;
   /** Override "now" provider for tests. */
   now?: () => Date;
+  /**
+   * §17.3 #9 (c) — gmail-check function for delivery=gmail jobs. When the
+   * Google adapter is configured + enabled, the CLI bot/cron entry points
+   * pass a function that wraps gmail.wasSubjectSentRecently. When omitted,
+   * catch-up falls through to in-memory + journal only.
+   */
+  gmailChecker?: (job: CronJob, scheduledFor: Date) => Promise<boolean>;
 }
 
 export interface SchedulerHandle {
@@ -99,12 +106,13 @@ export function startScheduler(opts: SchedulerOptions): SchedulerHandle {
   };
 
   const runCatchUp = async (): Promise<void> => {
-    const overdue = findOverdueFires({
+    const overdue = await findOverdueFires({
       jobs: opts.jobs,
       defaultTimezone,
       completedToday,
       journal: opts.journal,
       now: now(),
+      gmailChecker: opts.gmailChecker,
     });
     if (overdue.length === 0) {
       logger.info("[scheduler] catch-up: nothing overdue");

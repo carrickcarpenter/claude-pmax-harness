@@ -25,6 +25,17 @@ export interface CatchUpOptions {
   journal: CronJournal;
   /** "Now" — overridable for tests. */
   now?: Date;
+  /**
+   * §17.3 #9 (c) — gmail-check for delivery=gmail jobs. Given a job and its
+   * scheduled fire time, returns true if the job's `gmail_subject` was sent
+   * by the authenticated user within the last 24h.
+   * When omitted (e.g. google adapter disabled or not configured), gmail
+   * jobs fall through to the in-memory + journal checks alone.
+   */
+  gmailChecker?: (
+    job: CronJob,
+    scheduledFor: Date,
+  ) => Promise<boolean>;
 }
 
 export interface OverdueFire {
@@ -33,7 +44,9 @@ export interface OverdueFire {
   reason: "no-completion-in-memory" | "no-success-in-journal";
 }
 
-export function findOverdueFires(opts: CatchUpOptions): OverdueFire[] {
+export async function findOverdueFires(
+  opts: CatchUpOptions,
+): Promise<OverdueFire[]> {
   const now = opts.now ?? new Date();
   const overdue: OverdueFire[] = [];
 
@@ -48,6 +61,25 @@ export function findOverdueFires(opts: CatchUpOptions): OverdueFire[] {
       if (opts.journal.hasSuccess(job.id, fire)) {
         opts.completedToday.add(key); // memoize what the journal told us
         continue;
+      }
+      // §17.3 #9 (c) — gmail authoritative check for delivery=gmail jobs.
+      if (
+        opts.gmailChecker &&
+        job.delivery === "gmail" &&
+        job.gmail_subject
+      ) {
+        try {
+          const sent = await opts.gmailChecker(job, fire);
+          if (sent) {
+            opts.completedToday.add(key);
+            continue;
+          }
+        } catch (err) {
+          logger.warn(
+            { err, job_id: job.id },
+            "[catchup] gmail-check threw; falling through to journal-only",
+          );
+        }
       }
       overdue.push({
         job,

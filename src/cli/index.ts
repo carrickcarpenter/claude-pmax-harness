@@ -13,6 +13,7 @@ import {
 import { runPiiCheck } from "./commands/pii-check.js";
 import { runMemoryStats, runMemoryPurge } from "./commands/memory.js";
 import { runSetup } from "./commands/setup.js";
+import { runGoogleLogin, runGoogleTest } from "./commands/google.js";
 import { HarnessError, EXIT_CODES } from "../lib/errors.js";
 
 // projectRoot defaults to cwd. Future setup wizard will allow overriding via env.
@@ -237,6 +238,34 @@ memory
       }
     },
   );
+
+const google = program
+  .command("google")
+  .description("Google adapter — OAuth login + connectivity test");
+
+google
+  .command("login")
+  .description("run the OAuth flow (opens a temp HTTP server for the callback)")
+  .action(async () => {
+    try {
+      const exitCode = await runGoogleLogin({ projectRoot });
+      process.exit(exitCode);
+    } catch (err) {
+      handleError(err);
+    }
+  });
+
+google
+  .command("test")
+  .description("verify Google connectivity (lists 1-day inbox + upcoming events)")
+  .action(async () => {
+    try {
+      const exitCode = await runGoogleTest({ projectRoot });
+      process.exit(exitCode);
+    } catch (err) {
+      handleError(err);
+    }
+  });
 
 program.parseAsync(process.argv).catch(handleError);
 

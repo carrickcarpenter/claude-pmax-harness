@@ -31,6 +31,13 @@ export const CronFrontmatterSchema = z.object({
   tools: z.array(z.string()).default(["Read", "Glob", "Grep", "WebSearch", "WebFetch"]),
   enabled: z.boolean().default(true),
   catchup_window_minutes: z.number().int().positive().optional(),
+  /**
+   * For delivery=gmail jobs: the literal Subject: header the job sends.
+   * Used by the catch-up gmail-check (§17.3 #9 (c)) — if a message with this
+   * subject was sent in the last 24h, the job counts as completed even if
+   * the journal says otherwise. Optional; omit for non-gmail jobs.
+   */
+  gmail_subject: z.string().optional(),
 });
 
 export type CronFrontmatter = z.infer<typeof CronFrontmatterSchema>;

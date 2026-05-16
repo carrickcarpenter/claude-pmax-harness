@@ -16,6 +16,9 @@ import { TelegramSender } from "../../cron/telegram.js";
 import { startScheduler } from "../../cron/scheduler.js";
 import { executeJob } from "../../cron/runner.js";
 import { nextFireTimes } from "../../cron/schedule.js";
+import { credentialsFromEnv, makeOAuth2Client } from "../../adapters/google/client.js";
+import { wasSubjectSentRecently } from "../../adapters/google/gmail.js";
+import type { CronJob } from "../../cron/types.js";
 import { logger } from "../../lib/logger.js";
 
 export interface CronCommandOptions {
@@ -218,6 +221,10 @@ export async function runCronScheduler(opts: CronCommandOptions): Promise<number
     "[cron] scheduler starting",
   );
 
+  // §17.3 #9 (c) — wire the gmail-check if the Google adapter is enabled
+  // and credentials are present. Disabled gracefully otherwise.
+  const gmailChecker = makeGmailCheckerIfConfigured(ctx.config.google.enabled);
+
   const sched = startScheduler({
     config: ctx.config,
     jobs,
@@ -226,6 +233,7 @@ export async function runCronScheduler(opts: CronCommandOptions): Promise<number
     stateDir: ctx.stateDir,
     cwd: ctx.projectRoot,
     cliPath: ctx.cliPath,
+    gmailChecker,
   });
 
   const shutdown = (reason: string): void => {
@@ -239,4 +247,30 @@ export async function runCronScheduler(opts: CronCommandOptions): Promise<number
   return new Promise<number>(() => {
     // never resolves — runs until signal
   });
+}
+
+function makeGmailCheckerIfConfigured(
+  googleEnabled: boolean,
+): ((job: CronJob, scheduledFor: Date) => Promise<boolean>) | undefined {
+  if (!googleEnabled) return undefined;
+  const creds = credentialsFromEnv(process.env);
+  if (!creds) {
+    logger.warn(
+      "[cron] google.enabled=true but GOOGLE_* env vars missing — gmail-check disabled",
+    );
+    return undefined;
+  }
+  const client = makeOAuth2Client(creds);
+  return async (job, _scheduledFor) => {
+    if (!job.gmail_subject) return false;
+    try {
+      return await wasSubjectSentRecently(client, job.gmail_subject, 1);
+    } catch (err) {
+      logger.warn(
+        { err: err instanceof Error ? err.message : String(err), job_id: job.id },
+        "[cron] gmail-check threw — treating as not-sent",
+      );
+      return false;
+    }
+  };
 }

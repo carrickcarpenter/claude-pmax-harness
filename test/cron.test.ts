@@ -466,9 +466,9 @@ describe("executeJob", () => {
 // ── catchup ──────────────────────────────────────────────────────────────
 
 describe("findOverdueFires", () => {
-  test("returns [] when there are no enabled jobs", () => {
+  test("returns [] when there are no enabled jobs", async () => {
     const journal = new CronJournal(tmpRoot);
-    const out = findOverdueFires({
+    const out = await findOverdueFires({
       jobs: [makeJob({ enabled: false })],
       defaultTimezone: TZ,
       completedToday: new Set(),
@@ -478,10 +478,10 @@ describe("findOverdueFires", () => {
     expect(out).toEqual([]);
   });
 
-  test("detects a fire that happened earlier today but isn't completed", () => {
+  test("detects a fire that happened earlier today but isn't completed", async () => {
     const journal = new CronJournal(tmpRoot);
     // 8:30 fire, current 11:00 — overdue if not completed.
-    const out = findOverdueFires({
+    const out = await findOverdueFires({
       jobs: [makeJob({ schedule: "30 8 * * *", timezone: TZ })],
       defaultTimezone: TZ,
       completedToday: new Set(),
@@ -492,7 +492,7 @@ describe("findOverdueFires", () => {
     expect(out[0]!.job.id).toBe("test-job");
   });
 
-  test("skips fires the journal already records as successful", () => {
+  test("skips fires the journal already records as successful", async () => {
     const journal = new CronJournal(tmpRoot);
     const fireTime = new Date("2026-05-16T12:30:00Z"); // 8:30 EDT
     journal.append({
@@ -503,7 +503,7 @@ describe("findOverdueFires", () => {
       started_at: fireTime.toISOString(),
       finished_at: fireTime.toISOString(),
     });
-    const out = findOverdueFires({
+    const out = await findOverdueFires({
       jobs: [makeJob({ schedule: "30 8 * * *", timezone: TZ })],
       defaultTimezone: TZ,
       completedToday: new Set(),
@@ -513,12 +513,12 @@ describe("findOverdueFires", () => {
     expect(out).toEqual([]);
   });
 
-  test("skips fires the in-memory completedToday set already records", () => {
+  test("skips fires the in-memory completedToday set already records", async () => {
     const journal = new CronJournal(tmpRoot);
     const fireTime = new Date("2026-05-16T12:30:00Z");
     const completedToday = new Set<string>();
     completedToday.add(`${minuteKey(fireTime, TZ)}:test-job`);
-    const out = findOverdueFires({
+    const out = await findOverdueFires({
       jobs: [makeJob({ schedule: "30 8 * * *", timezone: TZ })],
       defaultTimezone: TZ,
       completedToday,
