@@ -21,6 +21,7 @@ import {
 } from "../../adapters/google/client.js";
 import { wasSubjectSentRecently } from "../../adapters/google/gmail.js";
 import type { CronJob } from "../../cron/types.js";
+import { Heartbeat } from "../../heartbeat/index.js";
 import { logger } from "../../lib/logger.js";
 
 export interface StartCommandOptions {
@@ -111,10 +112,20 @@ export async function runStart(opts: StartCommandOptions): Promise<number> {
     "[start] cron scheduler started",
   );
 
-  // 4. Shared shutdown
+  // 4. Heartbeat (PLAN.md v1 deliverable + config.assistant.heartbeat)
+  const heartbeat = new Heartbeat({
+    config: loaded.config,
+    cwd: opts.projectRoot,
+    cliPath: loaded.env.CLAUDE_CLI ?? loaded.config.claude.binary,
+    telegram,
+  });
+  heartbeat.start();
+
+  // 5. Shared shutdown
   const shutdown = async (reason: string): Promise<void> => {
     logger.info({ reason }, "[start] shutting down");
     try {
+      heartbeat.stop();
       sched.stop();
       await started.stop();
       bridge.close();

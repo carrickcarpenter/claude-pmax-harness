@@ -76,7 +76,7 @@ Suggested approach for the next session:
 - MemPalace verbatim memory + bridge process protocol (NDJSON over long-lived Python child)
 - Karpathy-pattern wiki loader; ships with empty `identity.md.template`, `principles.md.template`, etc.
 - Hardened cron runner: dedup, catch-up logic, journal-checking, retry, error-response detection
-- Heartbeat (every N hours, quiet hours support)
+- Heartbeat (every N hours, quiet hours support) — **done 2026-05-16** (`src/heartbeat/`, wired in `harness start`, prompt template at `templates/heartbeat.md.template`)
 - Generalized adversarial-subagent pattern (a `harness-skeptic` modeled on Alice's `alice-skeptic`)
 - Optional Google adapter (Gmail + Calendar + Drive) via official Google SDK
 - First-run setup wizard (`harness setup`): collects owner info, Telegram token, optionally walks through Google OAuth, generates `personal/` content from templates
