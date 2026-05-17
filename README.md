@@ -11,18 +11,25 @@ Runs locally on Linux / macOS / Windows-WSL2.
 
 ## New here? Start with one of these:
 
+> **You only need the command line ONCE — to install.** After that, you
+> manage everything by chatting with the bot in Telegram: scheduling
+> recurring jobs, editing its personality, updating its notes, asking
+> "what's running for me?" The terminal is the install path, not the
+> usage path.
+
 - **[`docs/quickstart.md`](./docs/quickstart.md)** — one-hour install
   walkthrough for true beginners. Covers WSL on Windows, Node + Python +
-  Claude CLI install, BotFather setup, the wizard prompt-by-prompt, day-to-day
-  operations, glossary.
+  Claude CLI install, BotFather setup, the wizard prompt-by-prompt,
+  day-to-day pm2 operations, glossary.
 - **[`docs/inspiration.md`](./docs/inspiration.md)** — "what to do with your
-  bot." A gallery of categories (research, writing help, life admin,
-  brainstorming, decisions, code, memory, creative, health) with example
-  prompts and how conversations tend to evolve.
+  bot." Starts with "managing your bot through chat" (cron jobs, personality,
+  notes — all conversational), then nine more categories: research, writing,
+  life admin, learning, brainstorming, decisions, code, memory, creative,
+  health.
 - **[`docs/cron-recipes.md`](./docs/cron-recipes.md)** — friendly tour of
-  scheduled jobs. Cron-expression cheat sheet, frontmatter schema field-by-
-  field, step-by-step "write your first job" tutorial, gallery of 12 example
-  jobs across difficulty tiers.
+  scheduled jobs. Leads with the "say X to your bot, it does Y" table for
+  cron management. Cron-expression cheat sheet, recipe gallery of 12 example
+  jobs you can ask for, file-format reference at the bottom for power users.
 
 If you're a developer evaluating the architecture, jump to
 [`docs/architecture.md`](./docs/architecture.md).

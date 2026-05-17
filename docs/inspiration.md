@@ -83,6 +83,74 @@ am I sitting on?" anytime.
 
 ## Categories of use
 
+### 0. Managing your bot through chat — never touch the command line
+
+The single most empowering category for non-technical users. Your bot can
+edit its own scheduled jobs, its own personality, and its own notes — all
+from chat. You don't need to know what cron or YAML is.
+
+```
+What's on my schedule for this week — anything you're going to send me?
+```
+
+The bot reads its own cron jobs and tells you what's queued. Useful if you
+forgot what you set up.
+
+```
+Set up a daily wisdom quote at 8am every weekday.
+```
+
+The bot drafts the prompt, shows it to you for tweaks, tests it once so
+you can see the actual output, then schedules it. No file editing on your
+part.
+
+```
+The morning briefing is way too long — make it 3 lines max, no preamble.
+```
+
+The bot edits the prompt body of the existing job, restarts so the change
+takes effect, and offers to fire it once now so you can verify the new
+length looks right.
+
+```
+I'm on vacation Friday through next Tuesday. Pause everything until I'm back.
+```
+
+The bot disables every active scheduled job and files a follow-up to itself
+to re-enable them on your return date.
+
+```
+You feel a bit too formal lately. Loosen up — talk to me like a friend who
+knows me. Update your own instructions to reflect this.
+```
+
+The bot edits `personal/CLAUDE.md` (its own identity file), then restarts
+to pick up the change.
+
+```
+Remember that I started learning piano last month. Save that under my
+interests / projects in your notes.
+```
+
+The bot updates `personal/wiki/identity.md` or creates a `personal/wiki/projects/piano.md`
+entry, then appends a line to `personal/wiki/log.md` so it can see the
+update later.
+
+```
+What have you noticed about me lately that I should know?
+```
+
+The bot looks at recent wiki edits + journal entries + conversation memory
+and surfaces patterns it's tracked. Sometimes uncomfortably perceptive.
+
+The bot will check with you before doing anything destructive (deletes,
+overwrites). For routine adds/edits it just does it and tells you what it
+did. If you want to slow it down — "always show me what you're going to
+do before you do it" — say so once; it'll remember.
+
+See [`cron-recipes.md`](./cron-recipes.md) for a full list of cron jobs
+you can ask for, including a row-by-row "you say X, the bot does Y" table.
+
 ### 1. Research help — go deeper than a quick search
 
 ```
