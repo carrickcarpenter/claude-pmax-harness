@@ -41,15 +41,28 @@ If you're a developer evaluating the architecture, jump to
 You have a Claude Pro Max subscription and a Telegram account. After running
 `harness setup`, you have an assistant that:
 
-- Chats with you over a Telegram bot you create at @BotFather. Single-user,
-  single-machine, no multi-tenancy.
-- Remembers conversations (MemPalace verbatim) and synthesizes durable
-  knowledge into a Karpathy-style wiki at `personal/wiki/`.
-- Runs scheduled jobs (cron) that fire prompts and deliver results via
+- **Chats with you over a Telegram bot** you create at @BotFather.
+  Single-user, single-machine, no multi-tenancy. Text, voice notes
+  (transcribed locally), photos (Claude reads them via its multimodal
+  Read tool), and documents.
+- **Streams replies progressively** in Telegram as it thinks — you see
+  the response build up, not a long pause and then a wall.
+- **Remembers conversations** (MemPalace verbatim) and synthesizes durable
+  knowledge into a Karpathy-style wiki at `personal/wiki/` that you and
+  the bot both edit.
+- **Runs scheduled jobs (cron)** that fire prompts and deliver results via
   Telegram, Gmail (with the optional Google adapter), or silently to disk.
-- Survives restarts, catches up on missed jobs, and self-heals when things
-  break — the resilience patterns are ported from a production-running
-  sibling project with months of dated-incident lessons behind them.
+  You set them up by **chatting with the bot** — no file editing needed.
+- **Sends optional heartbeat nudges** every N hours (default 4) with quiet
+  hours support, so the bot can surface follow-ups, calendar prep, or
+  inbox urgency without waiting for you to ask. Off by default; opt in.
+- **Manages itself from chat.** Tell it "set up X," "stop doing Y,"
+  "tweak your personality to do Z" — the bot edits its own config + cron
+  files and restarts itself. The CLI is the install path, not the daily
+  driver.
+- **Survives restarts, catches up on missed jobs, and self-heals** when
+  things break. The resilience patterns are ported from a production-
+  running sibling project with months of dated-incident lessons behind them.
 
 ## What it isn't
 
@@ -90,11 +103,13 @@ npm install
 npm run -s harness -- setup        # interactive wizard
 npm run -s harness -- doctor       # verify everything is green
 # Optional: npm run -s harness -- google login   # for Gmail/Calendar adapter
+# Optional: scripts/install-transcribe.sh        # for Telegram voice notes
 pm2 start ecosystem.config.cjs
 pm2 startup && pm2 save            # auto-restart on reboot
 ```
 
-Talk to your bot on Telegram. Watch logs with `pm2 logs`.
+Talk to your bot on Telegram. Watch logs with `pm2 logs`. Send your bot
+"set up a morning briefing at 7am every weekday" — it'll handle the rest.
 
 ---
 
@@ -179,10 +194,16 @@ to purge MemPalace.
 
 ```
 harness setup       first-run wizard (idempotent — safe to re-run)
-  --non-interactive   fail rather than prompt; combine with preset flags
-  --force             overwrite existing personal/ files (with .bak sidecar)
-  --chat-id <id>      skip the chat_id prompt
-  --owner-name / --timezone / --assistant-name / --telegram-token / etc.
+  --non-interactive             fail rather than prompt; combine with presets below
+  --force                       overwrite existing personal/ files (with .bak sidecar)
+  --chat-id <id>                preset: skip the chat_id prompt
+  --owner-name <name>           preset: owner display name
+  --timezone <tz>               preset: IANA timezone (e.g. America/New_York)
+  --assistant-name <name>       preset: what the assistant calls itself
+  --telegram-token <token>      preset: Telegram bot token
+  --google                      preset: enable Google adapter opt-in
+  --precommit-hook              preset: install PII pre-commit hook
+  --no-allow-dangerous          preset: drop Bash/Write/Edit from chat tools
 
 harness doctor      verify env / prereqs / config / perms
   --fix               auto-repair safe issues (chmod .env to 600)
