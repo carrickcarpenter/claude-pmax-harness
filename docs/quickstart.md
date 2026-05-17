@@ -191,7 +191,7 @@ official bot for creating bots — it's run by Telegram itself.
 3. BotFather asks for a username — must end in `bot` (e.g. `sage_helper_bot`).
    Must be globally unique; you may need to try a few.
 4. BotFather replies with a long string like
-   `7889123456:AAHkpzMHb-aBcDeFgHiJkLmNoPqRsTuVwXy` — that's your **bot
+   `123456789:AAHkpzMHb-aBcDeFgHiJkLmNoPqRsTuVwXy` — that's your **bot
    token**. Save it somewhere safe. You'll paste it into the harness in
    Step 5.
 

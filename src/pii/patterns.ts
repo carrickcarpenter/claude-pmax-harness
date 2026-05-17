@@ -18,8 +18,12 @@ export type PiiCategory =
 const EMAIL = /\b[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}\b/g;
 
 // Phone: US/Canada-leaning patterns + simple international forms.
-// Three groups of digits separated by -.space or nothing.
-const PHONE = /(?:\+\d{1,3}[-.\s]?)?(?:\(?\d{3}\)?[-.\s]?)\d{3}[-.\s]?\d{4}\b/g;
+// Three groups of digits separated by -.space (or parens around the first
+// three). At least ONE of the two interior separators must be present —
+// otherwise the regex would match any 10-digit chunk (bot tokens, IDs,
+// timestamps), producing many false positives. Real phone numbers in
+// the wild almost always have separators.
+const PHONE = /(?:\+\d{1,3}[-.\s]?)?(?:\(\d{3}\)\s*|\d{3}[-.\s])\d{3}[-.\s]?\d{4}\b|(?:\+\d{1,3}[-.\s]?)?\d{3}[-.\s]?\d{3}[-.\s]\d{4}\b/g;
 
 // US street address heuristic: <number> <2+ words> <street-suffix>
 // Catches "123 Main St", "4567 Oak Avenue", "1 First Ave", etc.
