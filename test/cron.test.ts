@@ -494,14 +494,19 @@ describe("findOverdueFires", () => {
 
   test("skips fires the journal already records as successful", async () => {
     const journal = new CronJournal(tmpRoot);
+    // The fire we're asking about can be any past date — what matters is
+    // that the journal entry's started_at falls within the last 24h
+    // (journal.hasSuccess uses Date.now() as the window anchor). Set both
+    // to real-now so this test is robust against day rollovers.
     const fireTime = new Date("2026-05-16T12:30:00Z"); // 8:30 EDT
+    const nowIso = new Date().toISOString();
     journal.append({
       job_id: "test-job",
       scheduled_for: fireTime.toISOString(),
       attempt: 1,
       status: "success",
-      started_at: fireTime.toISOString(),
-      finished_at: fireTime.toISOString(),
+      started_at: nowIso,
+      finished_at: nowIso,
     });
     const out = await findOverdueFires({
       jobs: [makeJob({ schedule: "30 8 * * *", timezone: TZ })],
