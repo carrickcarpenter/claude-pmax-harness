@@ -68,6 +68,22 @@ const DEFAULT_EXCLUDES = [
   "coverage/",
 ];
 
+// Paths the framework's own PII guard must never flag, because they
+// contain intentional scanner self-fixtures (fake PII used to test the
+// scanner) or the scanner's own regex source. Used by the pre-commit
+// hook's --staged path. CI's framework-PII guard in
+// .github/workflows/ci.yml hard-codes the same list inline (kept in
+// sync manually); update both if you change this.
+//
+// Path substrings are chosen to match in two different relative-path
+// contexts: the hook walks repo-root-relative paths ('src/pii/...'),
+// while CI scans with root='src/' so its paths are 'pii/...'. The
+// 'pii/patterns.ts' substring matches both forms.
+export const FRAMEWORK_SELF_EXCLUDES = [
+  "test/",
+  "pii/patterns.ts",
+];
+
 const DEFAULT_MAX_SIZE = 1024 * 1024; // 1 MB
 
 export function scanForPii(opts: ScanOptions): ScanReport {

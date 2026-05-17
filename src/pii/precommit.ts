@@ -21,17 +21,40 @@ import { resolve } from "node:path";
 export const HOOK_NAME = "pre-commit";
 export const HOOK_MARKER = "# claude-pmax-harness pii pre-commit hook (v1)";
 
+// The hook tries two invocation paths before giving up, so it works in
+// both global-install setups (npm install -g / npm link) and plain
+// 'npm install'-only clones. Without the npm fallback the hook silently
+// skipped in any clone where 'harness' wasn't on PATH — a false sense
+// of safety. The 'harness pii-check --staged' literal must remain in
+// the script body; test/pii.test.ts asserts on it.
 export const HOOK_SCRIPT = `#!/usr/bin/env bash
 ${HOOK_MARKER}
-# Runs \`harness pii-check --staged\` against the list of files staged for
-# commit. Non-zero exit blocks the commit. To disable, either delete this
-# file or run \`harness pii-check --uninstall-hook\`.
+# Runs the PII check against files staged for commit. Non-zero exit
+# blocks the commit. To disable, delete this file or run
+# 'harness pii-check --uninstall-hook'.
+#
+# Tries two invocation paths so the hook works whether or not the
+# 'harness' CLI is globally on PATH:
+#   1. 'harness pii-check --staged' (works if installed via 'npm link'
+#      or 'npm install -g')
+#   2. 'npm --prefix <repo-root> run -s harness -- pii-check --staged'
+#      (works in any clone where 'npm install' has been run)
+# If neither is usable, the hook skips with a warning rather than
+# blocking the commit.
 set -e
-if ! command -v harness >/dev/null 2>&1; then
-  echo "[pre-commit] harness CLI not on PATH; skipping PII check" >&2
-  exit 0
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+
+if command -v harness >/dev/null 2>&1; then
+  exec harness pii-check --staged
 fi
-harness pii-check --staged
+
+if [ -n "$REPO_ROOT" ] && [ -d "$REPO_ROOT/node_modules" ] && command -v npm >/dev/null 2>&1; then
+  exec npm --prefix "$REPO_ROOT" run -s harness -- pii-check --staged
+fi
+
+echo "[pre-commit] cannot run harness PII check ('harness' not on PATH and 'npm run harness' not usable); skipping" >&2
+echo "[pre-commit] (fix: run 'npm install' in the repo root, or 'npm link' to expose 'harness' on PATH)" >&2
+exit 0
 `;
 
 export function hookPathFor(repoRoot: string): string {

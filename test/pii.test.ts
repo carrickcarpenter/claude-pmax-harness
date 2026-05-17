@@ -223,6 +223,18 @@ describe("pre-commit hook installer", () => {
     expect((st.mode & 0o100) !== 0).toBe(true);
   });
 
+  test("hook script has both invocation paths so it works without 'harness' on PATH", () => {
+    // Regression: earlier hook only tried 'harness' and silently skipped in any
+    // clone that didn't have it globally installed — a false sense of safety.
+    // It now also tries 'npm --prefix <repo> run -s harness --' as a fallback.
+    const repo = makeRepo();
+    const result = installHook(repo);
+    const contents = readFileSync(result.path, "utf-8");
+    expect(contents).toMatch(/command -v harness/);
+    expect(contents).toMatch(/npm --prefix .* run -s harness --/);
+    expect(contents).toMatch(/git rev-parse --show-toplevel/);
+  });
+
   test("isInstalled returns true after install + false after uninstall", () => {
     const repo = makeRepo();
     expect(isInstalled(repo)).toBe(false);

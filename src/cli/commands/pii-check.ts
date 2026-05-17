@@ -7,7 +7,12 @@ import { resolve } from "node:path";
 import { existsSync } from "node:fs";
 import { loadConfig } from "../../config/load.js";
 import { ConfigError, EXIT_CODES } from "../../lib/errors.js";
-import { scanForPii, scanFiles, formatReport } from "../../pii/scanner.js";
+import {
+  scanForPii,
+  scanFiles,
+  formatReport,
+  FRAMEWORK_SELF_EXCLUDES,
+} from "../../pii/scanner.js";
 import {
   installHook,
   uninstallHook,
@@ -65,10 +70,16 @@ export async function runPiiCheck(opts: PiiCheckOptions): Promise<number> {
     }
     // For --staged, scan files OUTSIDE personal/ per §18.1 #4
     // (warns when staged files outside personal/ contain category-shaped strings).
-    const filesToScan = stagedFiles.filter((p) => !isInsidePersonal(p, opts.projectRoot));
+    // Also skip the framework's own scanner self-fixtures so editing them
+    // doesn't trip the guard — these are the same paths CI excludes.
+    const filesToScan = stagedFiles.filter((p) => {
+      if (isInsidePersonal(p, opts.projectRoot)) return false;
+      if (FRAMEWORK_SELF_EXCLUDES.some((ex) => p.includes(ex))) return false;
+      return true;
+    });
     if (filesToScan.length === 0) {
       console.log(
-        `All ${stagedFiles.length} staged file(s) are inside personal/ — nothing to warn on.`,
+        `All ${stagedFiles.length} staged file(s) are inside personal/ or are framework self-fixtures — nothing to warn on.`,
       );
       return EXIT_CODES.SUCCESS;
     }
