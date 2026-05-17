@@ -94,10 +94,28 @@ Open your terminal. You know the drill.
 
 ---
 
-## Step 2 — install Node.js, Python, and the Claude CLI
+## Step 2 — install git, Node.js, Python, and the Claude CLI
 
-These are the three tools the harness needs to run. We'll install them
-inside your terminal.
+These are the tools the harness needs to run. We'll install them inside
+your terminal.
+
+### Check that git is installed
+
+You'll use git in Step 4 to download the harness. Most systems ship with
+it, but check first:
+
+```bash
+git --version    # should print "git version 2.x" or newer
+```
+
+If you get `command not found`:
+
+- **WSL2 / Ubuntu:**  `sudo apt update && sudo apt install -y git`
+- **macOS:**  `xcode-select --install` (opens a GUI installer — about 1 GB)
+- **Fedora:**  `sudo dnf install -y git`
+- **Arch:**  `sudo pacman -S git`
+
+Re-run `git --version` to confirm.
 
 ### Install Node.js (version 20 or newer)
 
