@@ -288,6 +288,7 @@ export class MemPalaceBridge {
 
 function defaultScriptPath(): string {
   const here = dirname(fileURLToPath(import.meta.url));
-  // src/memory/bridge.ts → repo root → scripts/mempalace-bridge.py
-  return resolve(here, "..", "..", "..", "scripts", "mempalace-bridge.py");
+  // src/memory/ → repo root → scripts/mempalace-bridge.py
+  // (only TWO levels up: src/memory/ → src/ → repo root)
+  return resolve(here, "..", "..", "scripts", "mempalace-bridge.py");
 }

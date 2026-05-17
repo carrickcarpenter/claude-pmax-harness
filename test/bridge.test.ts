@@ -35,6 +35,21 @@ function newBridge(overrides: {
   });
 }
 
+describe("MemPalaceBridge — default script path", () => {
+  test("defaultScriptPath resolves to scripts/mempalace-bridge.py at repo root", () => {
+    // No scriptPath override → uses defaultScriptPath() → must point at a real file.
+    // Regression guard for the off-by-one bug where `..` count was wrong.
+    const bridge = new MemPalaceBridge({
+      pythonPath: "python3",
+      dataDir: tmpRoot,
+    });
+    const resolved = bridge.configuredScriptPath;
+    expect(resolved).toMatch(/scripts\/mempalace-bridge\.py$/);
+    const fs = require("node:fs") as typeof import("node:fs");
+    expect(fs.existsSync(resolved)).toBe(true);
+  });
+});
+
 describe("MemPalaceBridge — real bridge script", () => {
   test("start() resolves with ready handshake including version + python", async () => {
     const bridge = newBridge();
